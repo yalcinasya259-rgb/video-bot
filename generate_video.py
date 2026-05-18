@@ -1,0 +1,445 @@
+#!/usr/bin/env python3
+"""Video Bot Turkish v14 - Sadece fade efekti"""
+
+import sys,os,json,time,requests,subprocess,re,struct,math,hashlib,random
+from datetime import datetime
+from pathlib import Path
+from urllib.parse import quote
+
+GEMINI_API_KEY        = os.environ["GEMINI_API_KEY"]
+YOUTUBE_CLIENT_ID     = os.environ["YOUTUBE_CLIENT_ID"]
+YOUTUBE_CLIENT_SECRET = os.environ["YOUTUBE_CLIENT_SECRET"]
+YOUTUBE_REFRESH_TOKEN = os.environ["YOUTUBE_REFRESH_TOKEN"]
+TELEGRAM_BOT_TOKEN    = os.environ["TELEGRAM_BOT_TOKEN"]
+TELEGRAM_CHAT_ID      = os.environ["TELEGRAM_CHAT_ID"]
+
+WORK = Path("./output")
+WORK.mkdir(exist_ok=True)
+
+GEMINI_MODELS = [
+    ("gemini-2.5-flash","v1beta"),
+    ("gemini-2.0-flash","v1"),
+    ("gemini-2.0-flash-lite","v1"),
+]
+
+def tg(m, e=""):
+    t = f"{e} {m}".strip()
+    try:
+        requests.post(f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage",
+            json={"chat_id":TELEGRAM_CHAT_ID,"text":t,"parse_mode":"HTML"},timeout=10)
+    except: pass
+    print(t)
+
+def tg_foto(d, c):
+    try:
+        with open(d,"rb") as f:
+            requests.post(f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendPhoto",
+                data={"chat_id":TELEGRAM_CHAT_ID,"caption":c,"parse_mode":"HTML"},
+                files={"photo":f},timeout=30)
+    except: pass
+
+def komut_isle(cmd):
+    p = [x.strip() for x in cmd.strip().split(",")]
+    if len(p) == 5:
+        konu, muzik_hint, sure, resim, tarih_saat = p
+        tarih, saat = tarih_saat.strip().rsplit(" ",1) if " " in tarih_saat else (tarih_saat,"00:00")
+    elif len(p) == 6:
+        konu, muzik_hint, sure, resim, tarih, saat = p
+    else:
+        raise ValueError("Format: Konu,Muzik,Dakika,Resim,GG.AA.YYYY,SS:DD")
+    y = datetime.strptime(f"{tarih} {saat}","%d.%m.%Y %H:%M")
+    return {
+        "konu": konu,
+        "muzik_hint": muzik_hint.strip().lower(),
+        "sure": int(sure),
+        "resim": int(resim),
+        "yayin_iso": y.strftime("%Y-%m-%dT%H:%M:%S+00:00")
+    }
+
+def gemini(prompt, max_tokens=8192):
+    for model,api in GEMINI_MODELS:
+        url = f"https://generativelanguage.googleapis.com/{api}/models/{model}:generateContent"
+        headers = {"Content-Type":"application/json","x-goog-api-key":GEMINI_API_KEY}
+        body = {"contents":[{"parts":[{"text":prompt}]}],
+                "generationConfig":{"temperature":0.7,"maxOutputTokens":max_tokens}}
+        for attempt in range(3):
+            try:
+                r = requests.post(url,headers=headers,json=body,timeout=120)
+                if r.status_code == 200:
+                    c = r.json().get("candidates",[])
+                    if c:
+                        t = c[0].get("content",{}).get("parts",[{}])[0].get("text","").strip()
+                        if t: return t,model
+                    time.sleep(8)
+                elif r.status_code == 429:
+                    wait = 30 + attempt * 20
+                    tg(f"{model} rate limit, {wait}sn bekleniyor...","⏳")
+                    time.sleep(wait)
+                elif r.status_code == 503:
+                    time.sleep(15); break
+                else:
+                    tg(f"{model}: {r.json().get('error',{}).get('message','')[:50]}","⚠"); break
+            except requests.Timeout:
+                time.sleep(15)
+    raise Exception("Gemini yanit vermedi")
+
+def json_cikart(ham):
+    ham = re.sub(r"```json\s*|```\s*","",ham).strip()
+    try: return json.loads(ham)
+    except: pass
+    s=ham.find("{"); e=ham.rfind("}")+1
+    if s!=-1 and e>s:
+        seg=ham[s:e]
+        try: return json.loads(seg)
+        except: pass
+    veri={}
+    for a,pat in [("baslik",r'"baslik"\s*:\s*"([^"]{1,120})"'),
+                  ("aciklama",r'"aciklama"\s*:\s*"([^"]{1,800})"'),
+                  ("thumbnail_metin",r'"thumbnail_metin"\s*:\s*"([^"]{1,50})"')]:
+        m=re.search(pat,ham)
+        if m: veri[a]=m.group(1)
+    tm=re.search(r'"etiketler"\s*:\s*\[(.*?)\]',ham,re.DOTALL)
+    if tm: veri["etiketler"]=re.findall(r'"([^"]+)"',tm.group(1))
+    if "baslik" in veri: return veri
+    raise Exception(f"JSON: {ham[:60]}")
+
+def telaffuz(metin):
+    sozluk = [
+        (r'\bAI\b','Ay-Ay'),(r'\bYouTube\b','Yutub'),
+        (r'\bGoogle\b','Gugil'),(r'\bNASA\b','Nasa'),
+        (r'\bUSA\b','ABD'),(r'\bOK\b','tamam'),
+        (r'\bDNA\b','De-En-Ay'),(r'\bCIA\b','Si-Ay-Ay'),
+        (r'\bFBI\b','Ef-Bi-Ay'),(r'\bUFO\b','U-Ef-O'),
+        (r'\bDavid\b','Deyvid'),(r'\bMichael\b','Maykil'),
+        (r'\bJohn\b','Con'),(r'\bHahn\b','Han'),
+        (r'\bNew York\b','Nyu York'),
+        (r'\bWashington\b','Vasington'),
+    ]
+    for ing,tr in sozluk:
+        metin = re.sub(ing, tr, metin, flags=re.IGNORECASE)
+    return re.sub(r' +', ' ', metin).strip()
+
+# ─── İÇERİK ──────────────────────────────────────────────────────────────────
+def senaryo_uret(konu, sure, resim_sayisi):
+    tg(f"'{konu}' icin icerik uretiliyor...","📚")
+    kelime = sure * 170
+
+    tg(f"{resim_sayisi} gorsel promptu uretiliyor...","🎨")
+    gorseller = []
+    try:
+        p_img = f"""Sen bir gorsel sanatcisin. {konu} hakkinda bir belgesel icin tam olarak {resim_sayisi} adet benzersiz gorsel promptu uret.
+KURALLAR:
+- Her prompt {konu} ile dogrudan ilgili olmali
+- Gorsellerde KESINLIKLE insan, yuz, yazi olmasin
+- Sinematik, dramatik, yuksek kalite fotograf tarzi
+- Her prompt INGILIZCE olsun
+- Her prompt yeni satirda, 1 den {resim_sayisi} e kadar numarali
+- Her prompt 100 karakterden kisa olsun
+Simdi {resim_sayisi} prompt uret:"""
+        raw, _ = gemini(p_img, max_tokens=2048)
+        for line in raw.split('\n'):
+            line = re.sub(r'^\d+[\.\)]\s*','',line.strip())
+            if len(line) > 10:
+                gorseller.append(line + ", no people, no humans, cinematic dramatic lighting 8k")
+            if len(gorseller) >= resim_sayisi: break
+        tg(f"{len(gorseller)} gorsel promptu hazir","✅")
+    except Exception as e:
+        tg(f"Gorsel prompt hatasi: {e}","⚠")
+
+    while len(gorseller) < resim_sayisi:
+        i = len(gorseller)
+        gorseller.append(f"{konu} cinematic dramatic scene {i+1}, no people, 8k")
+
+    meta = {
+        "baslik": f"{konu}: Tarihin Gizli Sirri!",
+        "aciklama": f"{konu} hakkinda kapsamli Turkce belgesel. #belgesel #tarih #{konu.replace(' ','')}",
+        "etiketler": [konu,"belgesel","tarih","youtube","turkce","egitim","gizem","kesfet"],
+        "gorseller": gorseller[:resim_sayisi],
+        "thumbnail_metin": konu.upper()[:15],
+        "thumbnail_prompt": f"{konu} epic dramatic historical cinematic no text no people",
+        "renk": "#1a1a2e"
+    }
+
+    tg("SEO optimize ediliyor...","📋")
+    try:
+        h,model = gemini(
+            f"YouTube belgesel. Konu: {konu}. {sure} dk. Apostrof yok. "
+            f"JSON: {{\"baslik\":\"etkileyici 55 karakter emoji\",\"aciklama\":\"400 karakter hashtag\","
+            f"\"etiketler\":[\"e1\",\"e2\",\"e3\",\"e4\",\"e5\",\"e6\",\"e7\",\"e8\"],\"thumbnail_metin\":\"3 KELIME\"}}",
+            max_tokens=512)
+        mini = json_cikart(h)
+        for k2 in ["baslik","aciklama","etiketler","thumbnail_metin"]:
+            if mini.get(k2): meta[k2] = mini[k2]
+        tg(f"SEO hazir: <b>{meta['baslik']}</b>","✅")
+    except: tg("SEO varsayilan","⚠")
+
+    tg(f"Senaryo yaziliyor ({kelime} kelime)...","📝")
+    p2 = f"""Sen profesyonel bir belgesel anlaticisisin. {konu} hakkinda {sure} dakikalik bir belgesel icin metin yazacaksin.
+
+KESIN KURALLAR:
+- MUTLAKA {kelime} kelime veya daha fazla yaz.
+- Iki tarzi dogal sekilde karistir:
+  1. ANLATIM: Dramatik, akici Turkce prose
+  2. INSANI YORUM: Arada "Dusunsenize...", "Bence en ilginc olan su ki...", "Gercekten inanamiyorum ama...", "Bu noktada durup dusunmek gerekiyor..." gibi insani yorumlar her 150-200 kelimede bir
+- Hicbir sahne yonergesi, kose parantez, muzik notu yazma
+- Anlatici yazma, baslik yazma, apostrof kullanma, emoji kullanma
+- {kelime} kelimeye ulasana kadar yazmaya devam et
+
+Simdi basla ve {kelime}+ kelime yaz:"""
+
+    senaryo = ""
+    for attempt in range(4):
+        try:
+            h,model = gemini(p2, max_tokens=8192)
+            h = re.sub(r'\[.*?\]','',h,flags=re.DOTALL)
+            h = re.sub(r'\(.*?\)','',h,flags=re.DOTALL)
+            h = re.sub(r'^\*+\s*|^#+\s.*$','',h,flags=re.MULTILINE)
+            h = re.sub(r'\n{3,}','\n\n',h).strip()
+            wc = len(h.split())
+            tg(f"Deneme {attempt+1}: {wc} kelime","📝")
+            if wc > 300:
+                senaryo = h
+                tg(f"Senaryo hazir ({model}): <b>{wc} kelime</b>","✅")
+                break
+            time.sleep(5)
+        except Exception as e:
+            tg(f"Senaryo hatasi: {str(e)[:50]}","⚠"); time.sleep(10)
+
+    if not senaryo:
+        senaryo = f"{konu} tarihin en onemli konularindan biridir."
+
+    meta["senaryo"] = telaffuz(senaryo)
+    tg(f"Toplam: <b>{len(senaryo.split())} kelime</b>","📊")
+    return meta
+
+# ─── MÜZİK ───────────────────────────────────────────────────────────────────
+def muzik_uret(konu, sure_sn, muzik_hint=""):
+    tg("Muzik yukleniyor...","🎵")
+    repo_root = Path(os.environ.get("GITHUB_WORKSPACE","."))
+    all_mp3 = list(repo_root.glob("*.mp3"))
+    if not all_mp3:
+        tg("Repoda MP3 yok!","⚠"); return ""
+
+    def clean(s): return re.sub(r"[^a-z0-9]","",s.lower())
+    chosen = None
+
+    if muzik_hint:
+        hc = clean(muzik_hint)
+        for mp3 in all_mp3:
+            if hc in clean(mp3.name): chosen = mp3; break
+        if not chosen: tg(f"Hint bulunamadi, kategori kullaniliyor...","⚠")
+
+    if not chosen:
+        k = konu.lower()
+        for c,r in [("ş","s"),("ğ","g"),("ı","i"),("ö","o"),("ü","u"),("ç","c")]: k=k.replace(c,r)
+        cat = None
+        if any(x in k for x in ["savas","viking","osmanli","roma","tarih","cin","mogol","napoleon","hitler"]): cat="war"
+        elif any(x in k for x in ["misir","antik","yunan","sumer","babil","gemi","kayip","gizemli","gizem","korku","paranormal"]): cat="mystery"
+        elif any(x in k for x in ["uzay","yapay","teknoloji","bilim","robot","gelecek"]): cat="space"
+        elif any(x in k for x in ["doga","hayvan","deniz","orman","okyanus"]): cat="nature"
+        if cat:
+            matches = [m for m in all_mp3 if cat in m.name.lower()]
+            if matches:
+                seed = int(hashlib.md5(konu.encode()).hexdigest()[:8],16)
+                chosen = matches[seed % len(matches)]
+
+    if not chosen:
+        seed = int(hashlib.md5(konu.encode()).hexdigest()[:8],16)
+        chosen = all_mp3[seed % len(all_mp3)]
+        tg(f"Rastgele muzik: {chosen.name}","⚠")
+
+    tg(f"Muzik: <b>{chosen.name}</b> ({chosen.stat().st_size//1024}KB)","✅")
+    return str(chosen)
+
+# ─── GÖRSELLER ───────────────────────────────────────────────────────────────
+def gorsel_indir(i, prompt, toplam, konu=""):
+    yol = WORK/f"img_{i+1:02d}.jpg"
+    for attempt, seed in enumerate([i*7+42, i*13+17, i*3+99, i*19+5, i*31+11]):
+        enc = quote(prompt[:200])
+        url = f"https://image.pollinations.ai/prompt/{enc}?width=1920&height=1080&seed={seed}&nologo=true&model=flux&enhance=true"
+        try:
+            r = requests.get(url,timeout=120)
+            if r.status_code==200 and len(r.content)>10000 and r.content[:2]==b'\xff\xd8':
+                yol.write_bytes(r.content)
+                tg(f"Gorsel {i+1}/{toplam} ✓","🖼")
+                time.sleep(4)
+                return str(yol)
+            if r.status_code==429: time.sleep(45)
+            else: time.sleep(10)
+        except: time.sleep(10)
+        if attempt == 1:
+            prompt = f"{konu} cinematic dramatic landscape no people 8k"
+
+    renkler=["0x3D1C02","0x4A0E0E","0x0A1628","0x2D1B69","0x003333","0x1A3A1A"]
+    subprocess.run(["ffmpeg","-y","-f","lavfi","-i",
+        f"color=c={renkler[i%len(renkler)]}:size=1920x1080:rate=1",
+        "-vframes","1","-q:v","2",str(yol)],capture_output=True)
+    tg(f"Gorsel {i+1} yedek","⚠")
+    return str(yol)
+
+def gorseller_uret(promptlar, konu=""):
+    n = len(promptlar)
+    tg(f"{n} gorsel uretiliyor...","🎨")
+    return [gorsel_indir(i,p,n,konu) for i,p in enumerate(promptlar)]
+
+# ─── THUMBNAIL ───────────────────────────────────────────────────────────────
+def thumbnail_uret(prompt, metin, renk, konu):
+    tg("Thumbnail uretiliyor...","🖼")
+    enc=quote(f"{prompt}, youtube thumbnail dramatic vibrant no text no people")
+    url=f"https://image.pollinations.ai/prompt/{enc}?width=1280&height=720&seed=777&nologo=true&model=flux"
+    base=WORK/"thumb_base.jpg"; final=WORK/"thumbnail.jpg"
+    for _ in range(3):
+        try:
+            r=requests.get(url,timeout=60)
+            if r.status_code==200 and len(r.content)>5000 and r.content[:2]==b'\xff\xd8':
+                base.write_bytes(r.content); break
+            time.sleep(10)
+        except: time.sleep(10)
+    else:
+        subprocess.run(["ffmpeg","-y","-f","lavfi","-i",
+            f"color=c={renk.replace('#','0x')}:size=1280x720:rate=1",
+            "-vframes","1",str(base)],capture_output=True)
+    m=metin.upper()[:25].replace("'","").replace(":","\\:")
+    k=konu.upper()[:20].replace("'","").replace(":","\\:")
+    fs=80 if len(m)<=10 else 60 if len(m)<=18 else 44
+    vf=(f"drawbox=x=0:y=ih*0.58:w=iw:h=ih*0.42:color=black@0.72:t=fill,"
+        f"drawtext=text='{m}':fontsize={fs}:fontcolor=black@0.4:x=(w-text_w)/2+2:y=h*0.62+2:font=DejaVu Sans:style=Bold,"
+        f"drawtext=text='{m}':fontsize={fs}:fontcolor=white:x=(w-text_w)/2:y=h*0.62:font=DejaVu Sans:style=Bold,"
+        f"drawtext=text='{k}':fontsize=30:fontcolor=yellow:x=20:y=20:font=DejaVu Sans:style=Bold")
+    r=subprocess.run(["ffmpeg","-y","-i",str(base),"-vf",vf,"-q:v","2",str(final)],capture_output=True)
+    if r.returncode!=0 or not final.exists(): subprocess.run(["cp",str(base),str(final)])
+    if final.exists(): tg_foto(str(final),f"Thumbnail: {m}")
+    tg("Thumbnail hazir!","✅")
+    return str(final)
+
+# ─── SES ─────────────────────────────────────────────────────────────────────
+def ses_uret(senaryo):
+    tg("Turkce seslendirme uretiliyor...","🎙")
+    sf=WORK/"senaryo.txt"; rf=WORK/"ses_ham.mp3"
+    sub_vtt=WORK/"altyazi.vtt"; sub_srt=WORK/"altyazi.srt"
+    sf.write_text(senaryo,encoding="utf-8")
+
+    for rate,pitch,vol in [("-8%","-10Hz","+15%"),("-5%","-5Hz","+10%"),("0%","0Hz","0%")]:
+        r=subprocess.run(["edge-tts","--voice","tr-TR-EmelNeural",
+            "--file",str(sf),"--write-media",str(rf),
+            "--write-subtitles",str(sub_vtt),
+            f"--rate={rate}",f"--pitch={pitch}",f"--volume={vol}"],
+            capture_output=True,text=True,timeout=600)
+        if r.returncode==0 and rf.exists() and rf.stat().st_size>1000:
+            tg(f"Ses uretildi (rate={rate})","✅"); break
+        time.sleep(3)
+    else:
+        r2=subprocess.run(["edge-tts","--voice","tr-TR-EmelNeural",
+            "--file",str(sf),"--write-media",str(rf),
+            "--write-subtitles",str(sub_vtt)],
+            capture_output=True,text=True,timeout=600)
+        if r2.returncode!=0 or not rf.exists():
+            raise Exception(f"TTS: {r2.stderr[-80:]}")
+
+    if sub_vtt.exists():
+        vtt=sub_vtt.read_text(encoding="utf-8"); srt=[]; say=1
+        for blok in re.split(r'\n\n+',vtt):
+            if '-->' in blok:
+                sat=blok.strip().split('\n')
+                zaman=next((s for s in sat if '-->' in s),None)
+                if zaman:
+                    zaman=re.sub(r'(\d{2}:\d{2}:\d{2})\.(\d{3})',r'\1,\2',zaman).strip()
+                    mt=[s for s in sat if '-->' not in s and s.strip()
+                        and not s.startswith('NOTE') and not s.strip().isdigit()]
+                    if mt: srt+=[str(say),zaman]+mt+['']; say+=1
+        sub_srt.write_text('\n'.join(srt),encoding="utf-8")
+
+    probe=subprocess.run(["ffprobe","-v","quiet","-print_format","json","-show_format",str(rf)],
+        capture_output=True,text=True)
+    sure=float(json.loads(probe.stdout)["format"]["duration"])
+    tg(f"Ses hazir! Sure: <b>{sure/60:.1f} dakika</b>","✅")
+    return str(rf), sure, str(sub_srt) if sub_srt.exists() else ""
+
+# ─── MÜZİK MİKS ──────────────────────────────────────────────────────────────
+def ses_miksle(anlati, muzik, sure):
+    if not muzik: tg("Muzik yolu yok","⚠"); return anlati
+    mp = Path(muzik)
+    if not mp.exists(): tg(f"Muzik bulunamadi","⚠"); return anlati
+    tg(f"Muzik boyutu: {mp.stat().st_size//1024}KB","🎚")
+    try:
+        pb=subprocess.run(["ffprobe","-v","quiet","-print_format","json","-show_format",str(mp)],
+            capture_output=True,text=True)
+        ms=float(json.loads(pb.stdout)["format"]["duration"])
+        if ms<3: tg("Muzik cok kisa","⚠"); return anlati
+        tg(f"Muzik {ms:.0f}sn, karistiriliyor...","🎚")
+    except Exception as e:
+        tg(f"ffprobe hatasi: {e}","⚠"); return anlati
+
+    miksl=WORK/"miksl.mp3"
+    cmd=["ffmpeg","-y","-i",anlati,"-stream_loop","-1","-i",str(mp),
+         "-filter_complex",
+         "[0:a]aformat=sample_rates=44100:channel_layouts=stereo[a1];"
+         "[1:a]aformat=sample_rates=44100:channel_layouts=stereo,volume=0.08[a2];"
+         "[a1][a2]amix=inputs=2:duration=first:weights=1 0.6[aout]",
+         "-map","[aout]","-c:a","libmp3lame","-b:a","192k",
+         "-t",str(int(sure)+2),str(miksl)]
+    r=subprocess.run(cmd,capture_output=True,text=True,timeout=600)
+    if r.returncode==0 and miksl.exists() and miksl.stat().st_size>50000:
+        tg(f"Muzik eklendi! ({miksl.stat().st_size//1024}KB)","✅")
+        return str(miksl)
+    tg(f"Miksaj hatasi: {r.stderr[-60:]}","⚠")
+    return anlati
+
+# ─── VİDEO ───────────────────────────────────────────────────────────────────
+def video_uret(gorseller, ses, altyazi_srt, toplam_sure):
+    tg(f"Video uretiliyor... {len(gorseller)} gorsel","🎬")
+
+    gorsel_sure = toplam_sure / len(gorseller)
+    fps         = 25
+    fade_sure   = 0.5
+
+    klipler = []
+    for idx, gorsel in enumerate(gorseller):
+        klip = WORK/f"clip_{idx:02d}.mp4"
+
+        # Sadece scale — fade yok, zoom yok, efekt yok
+        vf = (f"scale=1920:1080:force_original_aspect_ratio=decrease,"
+              f"pad=1920:1080:(ow-iw)/2:(oh-ih)/2,"
+              f"format=yuv420p")
+
+        r = subprocess.run(
+            ["ffmpeg","-y","-loop","1","-i",gorsel,
+             "-vf",vf,"-t",str(gorsel_sure),
+             "-c:v","libx264","-preset","fast","-crf","23",
+             "-r",str(fps),str(klip)],
+            capture_output=True,text=True,timeout=300)
+
+        if r.returncode==0 and klip.exists():
+            klipler.append(str(klip))
+            tg(f"Klip {idx+1}/{len(gorseller)} ✓","🎞")
+        else:
+            tg(f"Klip {idx+1} hatasi: {r.stderr[-80:]}","⚠")
+
+    if not klipler: raise Exception("Hic klip olusturulamadi")
+
+    concat_list = WORK/"concat.txt"
+    concat_list.write_text('\n'.join(f"file '{Path(c).resolve()}'" for c in klipler))
+    ham_video = WORK/"video_ham.mp4"
+    r = subprocess.run(["ffmpeg","-y","-f","concat","-safe","0",
+        "-i",str(concat_list.resolve()),"-c:v","copy",str(ham_video)],
+        capture_output=True,text=True,timeout=3600)
+    if r.returncode!=0 or not ham_video.exists():
+        raise Exception(f"Concat hatasi: {r.stderr[-100:]}")
+
+    final_video = WORK/"final_video.mp4"
+    if altyazi_srt and os.path.exists(altyazi_srt):
+        srt_esc = str(altyazi_srt).replace('\\','/').replace(':','\\:')
+        vf_sub  = (f"subtitles={srt_esc}:force_style='"
+                   f"FontSize=14,PrimaryColour=&H00FFFF00,"
+                   f"OutlineColour=&H00000000,Outline=2,BorderStyle=1,"
+                   f"Alignment=2,MarginV=30'")
+        r = subprocess.run(["ffmpeg","-y","-i",str(ham_video),"-i",ses,
+            "-vf",vf_sub,"-c:v","libx264","-preset","fast","-crf","23",
+            "-c:a","aac","-b:a","192k","-shortest",str(final_video)],
+            capture_output=True,text=True,timeout=7200)
+    else:
+        r = subprocess.run(["ffmpeg","-y","-i",str(ham_video),"-i",ses,
+            "-c:v","copy","-c:a","aac","-b:a","192k","-shortest",str(final_video)],
+            capture_output=True,text=True,timeout=7200)
+
+    if r.returnc
