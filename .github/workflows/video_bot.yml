@@ -17,7 +17,9 @@ jobs:
         with:
           python-version: '3.11'
       - name: Bagimliliklar
-        run: pip install requests edge-tts
+        run: |
+             sudo apt-get install -y ffmpeg
+             pip install requests edge-tts
       - name: Video Uret
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
