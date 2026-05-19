@@ -442,4 +442,75 @@ def video_uret(gorseller, ses, altyazi_srt, toplam_sure):
             "-c:v","copy","-c:a","aac","-b:a","192k","-shortest",str(final_video)],
             capture_output=True,text=True,timeout=7200)
 
-    if r.returnc
+    if r.returncode!=0 or not final_video.exists():
+        raise Exception(f"Final video hatasi: {r.stderr[-100:]}")
+
+    tg(f"Video hazir! {final_video.stat().st_size//(1024*1024)}MB","✅")
+    return str(final_video)
+
+# ─── YOUTUBE ─────────────────────────────────────────────────────────────────
+def erisim_tokeni_al():
+    r=requests.post("https://oauth2.googleapis.com/token",data={
+        "client_id":YOUTUBE_CLIENT_ID,"client_secret":YOUTUBE_CLIENT_SECRET,
+        "refresh_token":YOUTUBE_REFRESH_TOKEN,"grant_type":"refresh_token"},timeout=30)
+    return r.json()["access_token"]
+
+def youtube_yukle(video_yolu, meta, yayin_iso):
+    tg("YouTube'a yukleniyor...","📤")
+    token = erisim_tokeni_al()
+    body = {"snippet":{"title":meta["baslik"][:100],"description":meta["aciklama"][:5000],
+                       "tags":meta["etiketler"][:500],"categoryId":"27",
+                       "defaultLanguage":"tr","defaultAudioLanguage":"tr"},
+            "status":{"privacyStatus":"private","publishAt":yayin_iso,"selfDeclaredMadeForKids":False}}
+    r=requests.post(
+        "https://www.googleapis.com/upload/youtube/v3/videos?uploadType=resumable&part=snippet,status",
+        headers={"Authorization":f"Bearer {token}","Content-Type":"application/json",
+                 "X-Upload-Content-Type":"video/mp4"},json=body,timeout=30)
+    upload_url = r.headers.get("Location","")
+    if not upload_url: raise Exception(f"Upload URL yok: {r.text[:100]}")
+    with open(video_yolu,"rb") as f: video_data=f.read()
+    r2=requests.put(upload_url,headers={"Content-Type":"video/mp4"},data=video_data,timeout=1800)
+    if r2.status_code not in [200,201]: raise Exception(f"Yukleme hatasi: {r2.text[:100]}")
+    vid_id=r2.json().get("id","")
+    tg(f"Yuklendi! youtube.com/watch?v={vid_id}\nYayin: {yayin_iso}","🎉")
+    return vid_id
+
+def thumbnail_yukle(vid_id, thumb_yolu):
+    try:
+        token=erisim_tokeni_al()
+        with open(thumb_yolu,"rb") as f: data=f.read()
+        r=requests.post(f"https://www.googleapis.com/upload/youtube/v3/thumbnails/set?videoId={vid_id}",
+            headers={"Authorization":f"Bearer {token}","Content-Type":"image/jpeg"},
+            data=data,timeout=60)
+        if r.status_code==200: tg("Thumbnail yuklendi!","🖼")
+    except Exception as e: tg(f"Thumbnail hatasi: {e}","⚠")
+
+# ─── ANA ─────────────────────────────────────────────────────────────────────
+def main():
+    if len(sys.argv)<2: tg("Komut alinamadi","⚠"); sys.exit(1)
+    cmd=" ".join(sys.argv[1:])
+    tg(f"Komut: <b>{cmd}</b>","🚀")
+    try: params=komut_isle(cmd)
+    except Exception as e: tg(f"Komut hatasi: {e}","❌"); sys.exit(1)
+
+    konu=params["konu"]; muzik_hint=params["muzik_hint"]
+    sure=params["sure"]; resim=params["resim"]
+    yayin_iso=params["yayin_iso"]
+
+    tg(f"<b>{konu}</b> | {sure} dk | {resim} gorsel\n📅 {yayin_iso}","📋")
+    try:
+        meta        = senaryo_uret(konu, sure, resim)
+        muzik       = muzik_uret(konu, sure*60, muzik_hint)
+        gorseller   = gorseller_uret(meta["gorseller"], konu)
+        thumbnail_uret(meta["thumbnail_prompt"],meta["thumbnail_metin"],meta["renk"],konu)
+        ses,ses_sure,altyazi = ses_uret(meta["senaryo"])
+        final_ses   = ses_miksle(ses, muzik, ses_sure)
+        video       = video_uret(gorseller, final_ses, altyazi, ses_sure)
+        vid_id      = youtube_yukle(video, meta, yayin_iso)
+        thumbnail_yukle(vid_id, str(WORK/"thumbnail.jpg"))
+        tg(f"✅ TAMAMLANDI!\nyoutube.com/watch?v={vid_id}","🎬")
+    except Exception as e:
+        tg(f"Kritik hata: {str(e)[:200]}","❌"); sys.exit(1)
+
+if __name__=="__main__":
+    main()
