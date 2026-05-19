@@ -374,7 +374,7 @@ def ses_miksle(anlati, muzik, sure):
     cmd=["ffmpeg","-y","-i",anlati,"-stream_loop","-1","-i",str(mp),
          "-filter_complex",
          "[0:a]aformat=sample_rates=44100:channel_layouts=stereo[a1];"
-         "[1:a]aformat=sample_rates=44100:channel_layouts=stereo,volume=0.08[a2];"
+         "[1:a]aformat=sample_rates=44100:channel_layouts=stereo,volume=0.15[a2];"
          "[a1][a2]amix=inputs=2:duration=first:weights=1 0.6[aout]",
          "-map","[aout]","-c:a","libmp3lame","-b:a","192k",
          "-t",str(int(sure)+2),str(miksl)]
