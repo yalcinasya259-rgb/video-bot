@@ -1,0 +1,29 @@
+name: Video Bot TR
+
+on:
+  workflow_dispatch:
+    inputs:
+      komut:
+        description: 'Konu,Muzik,Dakika,Resim,GG.AA.YYYY,SS:DD'
+        required: true
+
+jobs:
+  video:
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Bagimliliklar
+        run: pip install requests edge-tts
+      - name: Video Uret
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          YOUTUBE_CLIENT_ID: ${{ secrets.YOUTUBE_CLIENT_ID }}
+          YOUTUBE_CLIENT_SECRET: ${{ secrets.YOUTUBE_CLIENT_SECRET }}
+          YOUTUBE_REFRESH_TOKEN: ${{ secrets.YOUTUBE_REFRESH_TOKEN }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: python generate_video.py "${{ github.event.inputs.komut }}"
