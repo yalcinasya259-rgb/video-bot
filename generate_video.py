@@ -122,7 +122,7 @@ def telaffuz(metin):
 # ─── İÇERİK ──────────────────────────────────────────────────────────────────
 def senaryo_uret(konu, sure, resim_sayisi):
     tg(f"'{konu}' icin icerik uretiliyor...","📚")
-    kelime = sure * 170
+    kelime = max(sure * 130, 150)  # minimum 150 kelime
 
     tg(f"{resim_sayisi} gorsel promptu uretiliyor...","🎨")
     gorseller = []
@@ -197,7 +197,7 @@ Simdi basla ve {kelime}+ kelime yaz:"""
             h = re.sub(r'\n{3,}','\n\n',h).strip()
             wc = len(h.split())
             tg(f"Deneme {attempt+1}: {wc} kelime","📝")
-            if wc > 300:
+            if wc > 100:
                 senaryo = h
                 tg(f"Senaryo hazir ({model}): <b>{wc} kelime</b>","✅")
                 break
@@ -397,9 +397,11 @@ def video_uret(gorseller, ses, altyazi_srt, toplam_sure):
     for idx, gorsel in enumerate(gorseller):
         klip = WORK/f"clip_{idx:02d}.mp4"
 
-        # Sadece scale — fade yok, zoom yok, efekt yok
+        # Fade in/out ile scale
         vf = (f"scale=1920:1080:force_original_aspect_ratio=decrease,"
               f"pad=1920:1080:(ow-iw)/2:(oh-ih)/2,"
+              f"fade=t=in:st=0:d=0.5,"
+              f"fade=t=out:st={gorsel_sure-0.5:.2f}:d=0.5,"
               f"format=yuv420p")
 
         r = subprocess.run(
