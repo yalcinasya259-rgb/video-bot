@@ -127,14 +127,21 @@ def senaryo_uret(konu, sure, resim_sayisi):
     tg(f"{resim_sayisi} gorsel promptu uretiliyor...","🎨")
     gorseller = []
     try:
-        p_img = f"""Sen bir gorsel sanatcisin. {konu} hakkinda bir belgesel icin tam olarak {resim_sayisi} adet benzersiz gorsel promptu uret.
+        p_img = f"""Sen bir sinema görsel yönetmenisin. {konu} hakkında bir belgesel için tam olarak {resim_sayisi} adet güçlü, atmosferik görsel promptu İngilizce olarak üret.
+
 KURALLAR:
-- Her prompt {konu} ile dogrudan ilgili olmali
-- Gorsellerde KESINLIKLE insan, yuz, yazi olmasin
-- Sinematik, dramatik, yuksek kalite fotograf tarzi
-- Her prompt INGILIZCE olsun
-- Her prompt yeni satirda, 1 den {resim_sayisi} e kadar numarali
-- Her prompt 100 karakterden kisa olsun
+- Her prompt {konu} konusuna doğrudan ve spesifik olarak bağlı olmalı
+- Gizemli, karanlık, korku ve tarih temasına uygun sinematik sahneler
+- Havalimanı, pasaport kontrolü, eski arşiv fotoğrafları, karanlık koridorlar, sis, gece şehir manzaraları, dramatik gökyüzü, terk edilmiş mekanlar, gizem dolu objeler gibi ilgi çekici sahneler
+- KESİNLİKLE insan yüzü, vücut, portre OLMASIN
+- Her prompt 7-12 kelime arası, çok spesifik ve görsel
+- Numaralı liste, her satırda bir prompt
+- Sinematik ışıklandırma, dramatik atmosfer, yüksek kontrast
+
+Örnek format:
+1. abandoned airport terminal at midnight, eerie fog, dramatic lighting
+2. mysterious passport stamped with unknown country seal, dark background
+
 Simdi {resim_sayisi} prompt uret:"""
         raw, _ = gemini(p_img, max_tokens=2048)
         for line in raw.split('\n'):
