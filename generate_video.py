@@ -454,6 +454,47 @@ def video_uret(gorseller, ses, altyazi_srt, toplam_sure):
     if r.returncode!=0 or not final_video.exists():
         raise Exception(f"Final video hatasi: {r.stderr[-100:]}")
 
+    # Intro dosyasını bul
+    repo_root = Path(os.environ.get("GITHUB_WORKSPACE","."))
+    intro_dosya = None
+    for f in repo_root.glob("*.mp4"):
+        if "intro" in f.name.lower() or "abone" in f.name.lower():
+            intro_dosya = str(f)
+            break
+    if intro_dosya:
+        tg(f"Intro bulundu: {Path(intro_dosya).name}","🎬")
+    else:
+        tg("Intro bulunamadi, intro eklenmeyecek","⚠")
+
+    # Final videoya intro ekle (başa ve sona)
+    if intro_dosya and os.path.exists(intro_dosya):
+        with_intro = WORK/"final_with_intro.mp4"
+        # Intro codec'ini normalize et
+        intro_norm = WORK/"intro_norm.mp4"
+        subprocess.run(["ffmpeg","-y","-i",intro_dosya,
+            "-c:v","libx264","-preset","fast","-crf","23",
+            "-r","25","-vf","scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2,format=yuv420p",
+            "-c:a","aac","-b:a","192k",str(intro_norm)],
+            capture_output=True,text=True,timeout=120)
+
+        # Concat listesi: intro + video + intro
+        intro_concat = WORK/"intro_concat.txt"
+        intro_concat.write_text(
+            f"file '{Path(intro_norm).resolve()}'\n"
+            f"file '{Path(final_video).resolve()}'\n"
+            f"file '{Path(intro_norm).resolve()}'\n"
+        )
+        r_intro = subprocess.run(
+            ["ffmpeg","-y","-f","concat","-safe","0",
+             "-i",str(intro_concat.resolve()),
+             "-c","copy",str(with_intro)],
+            capture_output=True,text=True,timeout=600)
+        if r_intro.returncode==0 and with_intro.exists():
+            tg("Intro eklendi (bas + son)","✅")
+            return str(with_intro)
+        else:
+            tg(f"Intro eklenemedi: {r_intro.stderr[-60:]}","⚠")
+
     tg(f"Video hazir! {final_video.stat().st_size//(1024*1024)}MB","✅")
     return str(final_video)
 
