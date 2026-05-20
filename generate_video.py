@@ -263,7 +263,7 @@ def gorsel_indir(i, prompt, toplam, konu=""):
     yol = WORK/f"img_{i+1:02d}.jpg"
     for attempt, seed in enumerate([i*7+42, i*13+17, i*3+99, i*19+5, i*31+11]):
         enc = quote(prompt[:200])
-        url = f"https://image.pollinations.ai/prompt/{enc}?width=1920&height=1080&seed={seed}&nologo=true&model=flux&enhance=true"
+        url = f"https://image.pollinations.ai/prompt/{enc}?width=1920&height=1080&seed={seed}&nologo=true&model=flux&enhance=true&negative=person,human,face,body,portrait,man,woman,people,crowd,silhouette"
         try:
             r = requests.get(url,timeout=120)
             if r.status_code==200 and len(r.content)>10000 and r.content[:2]==b'\xff\xd8':
