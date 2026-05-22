@@ -13,8 +13,7 @@ YOUTUBE_REFRESH_TOKEN = os.environ["YOUTUBE_REFRESH_TOKEN"]
 TELEGRAM_BOT_TOKEN    = os.environ["TELEGRAM_BOT_TOKEN"]
 TELEGRAM_CHAT_ID      = os.environ["TELEGRAM_CHAT_ID"]
 
-WORK = Path("./output")
-WORK.mkdir(exist_ok=True)
+HF_TOKEN = os.environ.get("HUGGING_FACE","")
 
 GEMINI_MODELS = [
     ("gemini-2.5-flash","v1beta"),
@@ -122,7 +121,7 @@ def telaffuz(metin):
 # ─── İÇERİK ──────────────────────────────────────────────────────────────────
 def senaryo_uret(konu, sure, resim_sayisi):
     tg(f"'{konu}' icin icerik uretiliyor...","📚")
-    kelime = max(sure * 130, 150)  # minimum 150 kelime
+    kelime = max(sure * 150, 300)
 
     tg(f"{resim_sayisi} gorsel promptu uretiliyor...","🎨")
     gorseller = []
