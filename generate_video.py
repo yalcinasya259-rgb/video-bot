@@ -127,23 +127,24 @@ def senaryo_uret(konu, sure, resim_sayisi):
     tg(f"{resim_sayisi} gorsel promptu uretiliyor...","🎨")
     gorseller = []
     try:
-        p_img = f"""Sen bir sinema görsel yönetmenisin. {konu} hakkında bir belgesel için tam olarak {resim_sayisi} adet güçlü, atmosferik görsel promptu İngilizce olarak üret.
+        p_img = f"""Create exactly {resim_sayisi} image prompts for a documentary about: {konu}
 
-KESİN KURALLAR:
-- Her promptta MUTLAKA şu ifadeler geçmeli: "no humans, no people, no faces, no person, empty"
-- Sadece OBJELER, MEKANLAR, ATMOSFER — hiç insan yok
-- Gizemli, karanlık, korku ve tarih temasına uygun
-- {konu} konusuna spesifik objeler: belgeler, araçlar, mekanlar, doğa, gökyüzü, binalar
-- Her prompt 10-15 kelime, çok spesifik
-- Numaralı liste
+STRICT RULES:
+- Prompts must describe ONLY objects, locations, environments — ZERO humans
+- Each prompt must start with an object or place, never a person
+- Style: dark, mysterious, cinematic, eerie atmosphere
+- Related to {konu}: evidence, documents, vehicles, buildings, nature, sky, objects
+- Each prompt must contain: "empty scene, no humans, no people, object focus"
+- Numbered list, one per line, 10-15 words each
 
-Örnek iyi promptlar:
-- "empty airplane aisle at night, dramatic shadows, no people, no humans, cinematic"
-- "abandoned ransom money scattered in dark forest, foggy, no humans, no faces, mysterious"
-- "old FBI wanted poster on wall, dramatic lighting, empty room, no people"
-- "dense forest at dusk, fog, mysterious atmosphere, empty, no humans, cinematic 8k"
+Good examples for mystery topics:
+1. scattered cash bills on dark forest floor, foggy night, empty scene, no humans
+2. old ransom note on wooden table, dramatic shadow, empty scene, no people
+3. abandoned airplane seat with briefcase, dim lighting, object focus, no humans
+4. dense pacific northwest forest at dusk, misty, eerie, empty scene, no people
+5. vintage FBI case file papers spread on desk, dark room, no humans
 
-Şimdi {resim_sayisi} prompt üret, HER BİRİNDE 'no humans, no people' geçmeli:"""
+Now write {resim_sayisi} prompts for {konu}:"""
         raw, _ = gemini(p_img, max_tokens=2048)
         for line in raw.split('\n'):
             line = re.sub(r'^\d+[\.\)]\s*','',line.strip())
@@ -264,7 +265,7 @@ def gorsel_indir(i, prompt, toplam, konu=""):
     yol = WORK/f"img_{i+1:02d}.jpg"
     for attempt, seed in enumerate([i*7+42, i*13+17, i*3+99, i*19+5, i*31+11]):
         enc = quote(prompt[:200])
-        url = f"https://image.pollinations.ai/prompt/{enc}?width=1920&height=1080&seed={seed}&nologo=true&model=flux&enhance=true"
+        url = f"https://image.pollinations.ai/prompt/{enc}?width=1920&height=1080&seed={seed}&nologo=true&model=flux-realism&enhance=false"
         try:
             r = requests.get(url,timeout=120)
             if r.status_code==200 and len(r.content)>10000 and r.content[:2]==b'\xff\xd8':
