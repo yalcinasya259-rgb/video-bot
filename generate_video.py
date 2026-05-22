@@ -15,6 +15,9 @@ TELEGRAM_CHAT_ID      = os.environ["TELEGRAM_CHAT_ID"]
 
 HF_TOKEN = os.environ.get("HUGGING_FACE","")
 
+WORK = Path("./output")
+WORK.mkdir(exist_ok=True)
+
 GEMINI_MODELS = [
     ("gemini-2.5-flash","v1beta"),
     ("gemini-2.0-flash","v1"),
@@ -262,11 +265,46 @@ def muzik_uret(konu, sure_sn, muzik_hint=""):
 # ─── GÖRSELLER ───────────────────────────────────────────────────────────────
 def gorsel_indir(i, prompt, toplam, konu=""):
     yol = WORK/f"img_{i+1:02d}.jpg"
-    for attempt, seed in enumerate([i*7+42, i*13+17, i*3+99, i*19+5, i*31+11]):
+
+    # Hugging Face SDXL — insan üretmiyor
+    if HF_TOKEN:
+        hf_prompt = f"{prompt}, no humans, no people, no faces, empty scene, cinematic, dramatic lighting, 8k"
+        hf_negative = "human, person, face, body, portrait, man, woman, people, crowd, figure"
+        try:
+            r = requests.post(
+                "https://api-inference.huggingface.co/models/stabilityai/stable-diffusion-xl-base-1.0",
+                headers={"Authorization": f"Bearer {HF_TOKEN}"},
+                json={
+                    "inputs": hf_prompt,
+                    "parameters": {
+                        "negative_prompt": hf_negative,
+                        "width": 1920,
+                        "height": 1080,
+                        "num_inference_steps": 30,
+                        "guidance_scale": 7.5
+                    }
+                },
+                timeout=120
+            )
+            if r.status_code == 200 and len(r.content) > 10000:
+                yol.write_bytes(r.content)
+                tg(f"Gorsel {i+1}/{toplam} ✓ (HF)","🖼")
+                time.sleep(2)
+                return str(yol)
+            elif r.status_code == 503:
+                tg(f"HF model yuklenıyor, bekleniyor...","⏳")
+                time.sleep(30)
+            else:
+                tg(f"HF hata {r.status_code}, Pollinations'a geciliyor...","⚠")
+        except Exception as e:
+            tg(f"HF hatasi: {str(e)[:40]}","⚠")
+
+    # Pollinations fallback
+    for attempt, seed in enumerate([i*7+42, i*13+17, i*3+99, i*19+5]):
         enc = quote(prompt[:200])
         url = f"https://image.pollinations.ai/prompt/{enc}?width=1920&height=1080&seed={seed}&nologo=true&model=flux-realism&enhance=false"
         try:
-            r = requests.get(url,timeout=120)
+            r = requests.get(url, timeout=120)
             if r.status_code==200 and len(r.content)>10000 and r.content[:2]==b'\xff\xd8':
                 yol.write_bytes(r.content)
                 tg(f"Gorsel {i+1}/{toplam} ✓","🖼")
@@ -276,7 +314,7 @@ def gorsel_indir(i, prompt, toplam, konu=""):
             else: time.sleep(10)
         except: time.sleep(10)
         if attempt == 1:
-            prompt = f"{konu} cinematic dramatic landscape no people 8k"
+            prompt = f"{konu} empty dramatic landscape, no people, cinematic, dark atmosphere, 8k"
 
     renkler=["0x3D1C02","0x4A0E0E","0x0A1628","0x2D1B69","0x003333","0x1A3A1A"]
     subprocess.run(["ffmpeg","-y","-f","lavfi","-i",
