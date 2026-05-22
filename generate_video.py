@@ -129,20 +129,21 @@ def senaryo_uret(konu, sure, resim_sayisi):
     try:
         p_img = f"""Sen bir sinema görsel yönetmenisin. {konu} hakkında bir belgesel için tam olarak {resim_sayisi} adet güçlü, atmosferik görsel promptu İngilizce olarak üret.
 
-KURALLAR:
-- Her prompt {konu} konusuna doğrudan ve spesifik olarak bağlı olmalı
-- Gizemli, karanlık, korku ve tarih temasına uygun sinematik sahneler
-- Havalimanı, pasaport kontrolü, eski arşiv fotoğrafları, karanlık koridorlar, sis, gece şehir manzaraları, dramatik gökyüzü, terk edilmiş mekanlar, gizem dolu objeler gibi ilgi çekici sahneler
-- KESİNLİKLE insan yüzü, vücut, portre OLMASIN
-- Her prompt 7-12 kelime arası, çok spesifik ve görsel
-- Numaralı liste, her satırda bir prompt
-- Sinematik ışıklandırma, dramatik atmosfer, yüksek kontrast
+KESİN KURALLAR:
+- Her promptta MUTLAKA şu ifadeler geçmeli: "no humans, no people, no faces, no person, empty"
+- Sadece OBJELER, MEKANLAR, ATMOSFER — hiç insan yok
+- Gizemli, karanlık, korku ve tarih temasına uygun
+- {konu} konusuna spesifik objeler: belgeler, araçlar, mekanlar, doğa, gökyüzü, binalar
+- Her prompt 10-15 kelime, çok spesifik
+- Numaralı liste
 
-Örnek format:
-1. abandoned airport terminal at midnight, eerie fog, dramatic lighting
-2. mysterious passport stamped with unknown country seal, dark background
+Örnek iyi promptlar:
+- "empty airplane aisle at night, dramatic shadows, no people, no humans, cinematic"
+- "abandoned ransom money scattered in dark forest, foggy, no humans, no faces, mysterious"
+- "old FBI wanted poster on wall, dramatic lighting, empty room, no people"
+- "dense forest at dusk, fog, mysterious atmosphere, empty, no humans, cinematic 8k"
 
-Simdi {resim_sayisi} prompt uret:"""
+Şimdi {resim_sayisi} prompt üret, HER BİRİNDE 'no humans, no people' geçmeli:"""
         raw, _ = gemini(p_img, max_tokens=2048)
         for line in raw.split('\n'):
             line = re.sub(r'^\d+[\.\)]\s*','',line.strip())
@@ -263,7 +264,7 @@ def gorsel_indir(i, prompt, toplam, konu=""):
     yol = WORK/f"img_{i+1:02d}.jpg"
     for attempt, seed in enumerate([i*7+42, i*13+17, i*3+99, i*19+5, i*31+11]):
         enc = quote(prompt[:200])
-        url = f"https://image.pollinations.ai/prompt/{enc}?width=1920&height=1080&seed={seed}&nologo=true&model=flux&enhance=true&negative=person,human,face,body,portrait,man,woman,people,crowd,silhouette"
+        url = f"https://image.pollinations.ai/prompt/{enc}?width=1920&height=1080&seed={seed}&nologo=true&model=flux&enhance=true"
         try:
             r = requests.get(url,timeout=120)
             if r.status_code==200 and len(r.content)>10000 and r.content[:2]==b'\xff\xd8':
@@ -461,39 +462,38 @@ def video_uret(gorseller, ses, altyazi_srt, toplam_sure):
         if "intro" in f.name.lower() or "abone" in f.name.lower():
             intro_dosya = str(f)
             break
-    if intro_dosya:
-        tg(f"Intro bulundu: {Path(intro_dosya).name}","🎬")
-    else:
-        tg("Intro bulunamadi, intro eklenmeyecek","⚠")
 
-    # Final videoya intro ekle (başa ve sona)
     if intro_dosya and os.path.exists(intro_dosya):
-        with_intro = WORK/"final_with_intro.mp4"
-        # Intro codec'ini normalize et
+        tg(f"Intro bulundu: {Path(intro_dosya).name}","🎬")
+        # Intro'yu normalize et
         intro_norm = WORK/"intro_norm.mp4"
         subprocess.run(["ffmpeg","-y","-i",intro_dosya,
-            "-c:v","libx264","-preset","fast","-crf","23",
-            "-r","25","-vf","scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2,format=yuv420p",
+            "-c:v","libx264","-preset","fast","-crf","23","-r","25",
+            "-vf","scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2,format=yuv420p",
             "-c:a","aac","-b:a","192k",str(intro_norm)],
             capture_output=True,text=True,timeout=120)
 
-        # Concat listesi: intro + video + intro
-        intro_concat = WORK/"intro_concat.txt"
-        intro_concat.write_text(
-            f"file '{Path(intro_norm).resolve()}'\n"
-            f"file '{Path(final_video).resolve()}'\n"
-            f"file '{Path(intro_norm).resolve()}'\n"
-        )
-        r_intro = subprocess.run(
-            ["ffmpeg","-y","-f","concat","-safe","0",
-             "-i",str(intro_concat.resolve()),
-             "-c","copy",str(with_intro)],
-            capture_output=True,text=True,timeout=600)
-        if r_intro.returncode==0 and with_intro.exists():
-            tg("Intro eklendi (bas + son)","✅")
-            return str(with_intro)
-        else:
-            tg(f"Intro eklenemedi: {r_intro.stderr[-60:]}","⚠")
+        if intro_norm.exists():
+            with_intro = WORK/"final_with_intro.mp4"
+            intro_concat = WORK/"intro_concat.txt"
+            # Başa intro + ana video + sona intro (tamamen ayrı, üste binmiyor)
+            intro_concat.write_text(
+                f"file '{intro_norm.resolve()}'\n"
+                f"file '{final_video.resolve()}'\n"
+                f"file '{intro_norm.resolve()}'\n"
+            )
+            r2 = subprocess.run(
+                ["ffmpeg","-y","-f","concat","-safe","0",
+                 "-i",str(intro_concat.resolve()),
+                 "-c","copy",str(with_intro)],
+                capture_output=True,text=True,timeout=600)
+            if r2.returncode==0 and with_intro.exists():
+                tg(f"Intro eklendi! {with_intro.stat().st_size//(1024*1024)}MB","✅")
+                return str(with_intro)
+            else:
+                tg(f"Intro eklenemedi: {r2.stderr[-60:]}","⚠")
+    else:
+        tg("Intro bulunamadi","⚠")
 
     tg(f"Video hazir! {final_video.stat().st_size//(1024*1024)}MB","✅")
     return str(final_video)
