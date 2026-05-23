@@ -151,7 +151,20 @@ Now write {resim_sayisi} prompts for {konu}:"""
         for line in raw.split('\n'):
             line = re.sub(r'^\d+[\.\)]\s*','',line.strip())
             if len(line) > 10:
-                gorseller.append(line + ", no people, no humans, cinematic dramatic lighting 8k")
+                # İnsan içeren kelimeleri temizle ve değiştir
+                insan_kelimeler = [
+                    "man","woman","person","people","human","detective","agent",
+                    "police","officer","criminal","suspect","hijacker","pilot",
+                    "passenger","crowd","figure","silhouette","face","portrait",
+                    "character","individual","male","female","guy","girl","boy","kid"
+                ]
+                line_lower = line.lower()
+                has_human = any(f" {k} " in f" {line_lower} " or line_lower.startswith(k) for k in insan_kelimeler)
+                if has_human:
+                    # İnsan promptunu nesne/mekan promptuyla değiştir
+                    line = f"{konu} related object or location, dramatic cinematic atmosphere, dark mysterious, empty scene"
+                line = line + ", NO humans, NO people, NO faces, empty, object focus only"
+                gorseller.append(line)
             if len(gorseller) >= resim_sayisi: break
         tg(f"{len(gorseller)} gorsel promptu hazir","✅")
     except Exception as e:
@@ -268,8 +281,8 @@ def gorsel_indir(i, prompt, toplam, konu=""):
 
     # Hugging Face SDXL — insan üretmiyor
     if HF_TOKEN:
-        hf_prompt = f"{prompt}, no humans, no people, no faces, empty scene, cinematic, dramatic lighting, 8k"
-        hf_negative = "human, person, face, body, portrait, man, woman, people, crowd, figure"
+        hf_prompt = f"{prompt}, empty scene, no humans, cinematic 8k"
+        hf_negative = "human, person, face, body, man, woman, people, crowd, figure, portrait, closeup face, character, silhouette, hands, skin"
         try:
             r = requests.post(
                 "https://api-inference.huggingface.co/models/stabilityai/stable-diffusion-xl-base-1.0",
