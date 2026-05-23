@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Video Bott Turkish v14 - Sadece fade efekti"""
+"""Video Bot Turkish v14 - Sadece fade efekti"""
 
 import sys,os,json,time,requests,subprocess,re,struct,math,hashlib,random
 from datetime import datetime
