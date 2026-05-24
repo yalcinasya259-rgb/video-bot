@@ -126,98 +126,65 @@ def senaryo_uret(konu, sure, resim_sayisi):
     tg(f"'{konu}' icin icerik uretiliyor...","📚")
     kelime = max(sure * 150, 300)
 
-    tg(f"{resim_sayisi} gorsel promptu hazirlaniyor...","🎨")
-    
-    # Konuya göre güvenli, insan içermeyen prompt havuzu
-    k = konu.lower()
-    for c,r in [("ş","s"),("ğ","g"),("ı","i"),("ö","o"),("ü","u"),("ç","c")]: k=k.replace(c,r)
+    tg(f"{resim_sayisi} gorsel promptu uretiliyor...","🎨")
 
-    # Genel gizemli/tarihi prompt havuzu — HİÇ insan yok
-    genel_havuz = [
-        "dark misty forest at night, dramatic rays of light, empty, cinematic 8k",
-        "abandoned old building interior, dust particles in light beams, empty, cinematic",
-        "scattered old documents and files on wooden desk, dramatic shadows, empty room",
-        "stormy dramatic sky over empty dark landscape, cinematic wide shot",
-        "dense thick fog rolling through empty dark forest, eerie atmosphere, cinematic",
-        "vintage newspaper clippings scattered on table, dark moody candlelight, empty",
-        "empty airport terminal at midnight, dramatic neon reflections, no people",
-        "dark rainy street puddles reflecting city lights, completely empty, cinematic noir",
-        "old safe with money scattered on floor, dramatic lighting, empty dark room",
-        "mysterious old briefcase open on table, dark background, empty scene",
-        "dramatic lightning strike over empty mountains, cinematic wide shot",
-        "abandoned warehouse interior with shafts of sunlight, empty, cinematic 8k",
-        "vintage map compass and old papers on table, candlelight, dark empty room",
-        "old rotary telephone and manila folders on desk, shadows, empty office",
-        "dark river reflecting moonlight through misty forest, empty, cinematic",
-        "old aircraft cockpit interior, dramatic lighting, empty seats, cinematic",
-        "dense jungle at dusk, mysterious shadows, empty path, cinematic 8k",
-        "old hotel corridor with dim lights, dramatic shadows, empty, eerie",
-        "mountain range at night with stars, dramatic sky, empty landscape, cinematic",
-        "ancient stone ruins in fog, dramatic atmosphere, empty, cinematic 8k",
-        "crumpled ransom note under spotlight, dark background, empty table",
-        "old parachute tangled in tree branches, dark forest, no people, cinematic",
-        "vintage airplane window view of clouds at sunset, empty seat, cinematic",
-        "FBI case file folders spread open, evidence photos blurred, empty desk",
-        "dark ocean waves crashing on empty rocky shore at night, cinematic",
-        "old locked door in abandoned building, dramatic lighting, empty hallway",
-        "thick morning mist over empty pine forest, golden hour, cinematic",
-        "dramatic storm clouds over empty sea, lightning in distance, cinematic",
-        "old black telephone on wooden desk, single lamp light, dark empty room",
-        "ancient stone bridge over dark misty river, empty, cinematic 8k",
-    ]
+    insan_kelimeler = {"man","woman","person","people","human","detective","agent",
+        "police","officer","criminal","suspect","hijacker","pilot","passenger",
+        "crowd","figure","silhouette","face","portrait","character","male","female",
+        "guy","girl","boy","soldier","guard","worker","scientist","engineer",
+        "researcher","child","kid","baby","hand","hands","body","skin"}
 
-    # Konuya özel ek promptlar
-    if any(x in k for x in ["cooper","ucak","hijack","ucurma","kacirma"]):
-        ozel = [
-            "vintage boeing 727 airplane exterior on dark runway, dramatic lighting, empty",
-            "airplane cabin empty seats at night, dim overhead lights, eerie atmosphere",
-            "parachute tangled in dense dark forest trees, no people, cinematic",
-            "old ransom money bills scattered in muddy forest floor, dramatic, empty",
-            "vintage 1970s airport terminal empty at night, neon signs, cinematic",
-        ]
-    elif any(x in k for x in ["taured","pasaport","sinir","gumruk"]):
-        ozel = [
-            "empty airport immigration hall at night, dramatic lighting, no people",
-            "mysterious passport with unknown stamps on dark table, spotlight",
-            "empty hotel corridor with single door ajar, eerie dim lighting",
-            "old map with mysterious country marked, dark wooden table, candlelight",
-            "immigration counter empty at midnight, fluorescent lights, eerie",
-        ]
-    elif any(x in k for x in ["cinayet","katil","seri","katliam"]):
-        ozel = [
-            "dark alley at night with rain, empty, dramatic noir lighting",
-            "crime scene tape across dark doorway, empty street, cinematic",
-            "old detective files and photos on cork board, empty room, dramatic",
-            "abandoned house interior at night, broken windows, empty, eerie",
-            "dark forest path at night, moonlight, empty, mysterious cinematic",
-        ]
-    elif any(x in k for x in ["uzay","uzayli","ufo","alien"]):
-        ozel = [
-            "mysterious lights in dark night sky over empty field, cinematic",
-            "empty desert at night with strange light beam from sky, cinematic",
-            "abandoned military radar station, dramatic sky, empty, cinematic",
-            "dark sky full of stars over empty mountain landscape, cinematic 8k",
-            "mysterious crop circle in empty field at dawn, aerial view, cinematic",
-        ]
-    else:
-        ozel = [
-            f"dramatic empty landscape related to mystery, dark atmosphere, cinematic 8k",
-            f"old evidence and documents on empty desk, single spotlight, dark room",
-            f"abandoned location at night, eerie lighting, empty, cinematic",
-            f"vintage newspaper front page under spotlight, dark background, empty",
-            f"mysterious sealed envelope on dark wooden table, dramatic lighting",
-        ]
+    def temizle(prompt):
+        words = prompt.split()
+        temiz = [w for w in words if w.lower().strip(".,") not in insan_kelimeler]
+        return " ".join(temiz)
 
-    # Tüm promptları karıştır ve seç
-    tum_havuz = ozel + genel_havuz
-    random.seed(int(hashlib.md5(konu.encode()).hexdigest()[:8],16) + int(time.time()) % 10000)
-    random.shuffle(tum_havuz)
-    
     gorseller = []
-    for i in range(resim_sayisi):
-        gorseller.append(tum_havuz[i % len(tum_havuz)])
-    
-    tg(f"{len(gorseller)} gorsel promptu hazir (insan yok)","✅")
+    try:
+        p_img = f"""You are a cinematographer. Generate exactly {resim_sayisi} image prompts for a documentary about: {konu}
+
+ABSOLUTE RULES:
+- ONLY describe physical objects, locations, equipment, nature, buildings — NO humans ever
+- Every prompt MUST be directly and specifically about {konu}
+- Include specific items related to {konu}: equipment, buildings, documents, landscapes, technology, artifacts
+- Style: dark, dramatic, cinematic, mysterious atmosphere
+- Each prompt: 8-12 words, very specific, starts with an object or place
+- FORBIDDEN words: man, woman, person, people, human, face, figure, portrait, character, body, hand
+- Every prompt ends with: "empty, no people, cinematic 8k"
+- Numbered 1 to {resim_sayisi}
+
+Example for "nuclear weapons":
+1. nuclear reactor cooling towers at dusk, dramatic sky, empty, no people, cinematic 8k
+2. uranium enrichment centrifuges in dark facility, blue glow, empty, no people, cinematic 8k
+3. atomic bomb blueprint documents on table, dramatic lighting, empty, no people, cinematic 8k
+
+Now generate {resim_sayisi} prompts specifically about {konu}:"""
+
+        raw, _ = gemini(p_img, max_tokens=2048)
+        for line in raw.split('\n'):
+            line = re.sub(r'^\d+[\.\)]\s*','',line.strip())
+            line = re.sub(r'^[-*]\s*','',line)
+            if len(line) > 15:
+                line = temizle(line)
+                if "no people" not in line.lower():
+                    line += ", empty, no people, cinematic 8k"
+                gorseller.append(line)
+            if len(gorseller) >= resim_sayisi: break
+        tg(f"{len(gorseller)} gorsel promptu hazir","✅")
+    except Exception as e:
+        tg(f"Gorsel prompt hatasi: {e}","⚠")
+
+    # Yeterli yoksa konuya spesifik fallback
+    fallback_base = [
+        f"{konu} facility exterior at night, dramatic lighting, empty, no people, cinematic 8k",
+        f"{konu} related equipment closeup, dark background, dramatic, empty, no people, cinematic",
+        f"abandoned {konu} site, eerie atmosphere, empty, no people, cinematic 8k",
+        f"{konu} documents and blueprints on desk, spotlight, empty room, no people",
+        f"dramatic sky over {konu} landscape, wide shot, empty, no people, cinematic 8k",
+    ]
+    while len(gorseller) < resim_sayisi:
+        i = len(gorseller)
+        gorseller.append(fallback_base[i % len(fallback_base)])
 
     meta = {
         "baslik": f"{konu}: Tarihin Gizli Sirri!",
