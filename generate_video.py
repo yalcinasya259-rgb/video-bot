@@ -210,7 +210,7 @@ def senaryo_uret(konu, sure, resim_sayisi):
 
     # Tüm promptları karıştır ve seç
     tum_havuz = ozel + genel_havuz
-    random.seed(int(hashlib.md5(konu.encode()).hexdigest()[:8],16))
+    random.seed(int(hashlib.md5(konu.encode()).hexdigest()[:8],16) + int(time.time()) % 10000)
     random.shuffle(tum_havuz)
     
     gorseller = []
