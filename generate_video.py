@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Video Bot Turkish v14 - Sadece fade efekti"""
+"""Video Bot Turkish v14 Final"""
 
 import sys,os,json,time,requests,subprocess,re,struct,math,hashlib,random
 from datetime import datetime
@@ -12,8 +12,7 @@ YOUTUBE_CLIENT_SECRET = os.environ["YOUTUBE_CLIENT_SECRET"]
 YOUTUBE_REFRESH_TOKEN = os.environ["YOUTUBE_REFRESH_TOKEN"]
 TELEGRAM_BOT_TOKEN    = os.environ["TELEGRAM_BOT_TOKEN"]
 TELEGRAM_CHAT_ID      = os.environ["TELEGRAM_CHAT_ID"]
-
-HF_TOKEN = os.environ.get("HUGGING_FACE","")
+HF_TOKEN              = os.environ.get("HUGGING_FACE","")
 
 WORK = Path("./output")
 WORK.mkdir(exist_ok=True)
@@ -42,11 +41,12 @@ def tg_foto(d, c):
 
 def komut_isle(cmd):
     p = [x.strip() for x in cmd.strip().split(",")]
-    if len(p) == 5:
-        konu, muzik_hint, sure, resim, tarih_saat = p
-        tarih, saat = tarih_saat.strip().rsplit(" ",1) if " " in tarih_saat else (tarih_saat,"00:00")
-    elif len(p) == 6:
+    if len(p) == 6:
         konu, muzik_hint, sure, resim, tarih, saat = p
+        efekt_sayisi = 10
+    elif len(p) == 7:
+        konu, muzik_hint, sure, resim, efekt_sayisi, tarih, saat = p
+        efekt_sayisi = int(efekt_sayisi)
     else:
         raise ValueError("Format: Konu,Muzik,Dakika,Resim,GG.AA.YYYY,SS:DD")
     y = datetime.strptime(f"{tarih} {saat}","%d.%m.%Y %H:%M")
@@ -126,46 +126,43 @@ def senaryo_uret(konu, sure, resim_sayisi):
     tg(f"'{konu}' icin icerik uretiliyor...","📚")
     kelime = max(sure * 150, 300)
 
+    # Görsel promptları Gemini ile üret
     tg(f"{resim_sayisi} gorsel promptu uretiliyor...","🎨")
 
-    insan_kelimeler = {"man","woman","person","people","human","detective","agent",
-        "police","officer","criminal","suspect","hijacker","pilot","passenger",
-        "crowd","figure","silhouette","face","portrait","character","male","female",
-        "guy","girl","boy","soldier","guard","worker","scientist","engineer",
-        "researcher","child","kid","baby","hand","hands","body","skin"}
+    INSAN = {"man","woman","person","people","human","detective","agent","police",
+             "officer","criminal","suspect","hijacker","pilot","passenger","crowd",
+             "figure","silhouette","face","portrait","character","male","female",
+             "guy","girl","boy","soldier","guard","worker","scientist","engineer",
+             "researcher","child","kid","baby","hand","hands","body","skin","eye","eyes"}
 
-    def temizle(prompt):
-        words = prompt.split()
-        temiz = [w for w in words if w.lower().strip(".,") not in insan_kelimeler]
-        return " ".join(temiz)
+    def temizle_prompt(p):
+        words = p.split()
+        return " ".join(w for w in words if w.lower().strip(".,;:!?") not in INSAN)
 
     gorseller = []
     try:
-        p_img = f"""You are a cinematographer. Generate exactly {resim_sayisi} image prompts for a documentary about: {konu}
+        p_img = f"""You are a cinematographer creating image prompts for a documentary about: {konu}
 
-ABSOLUTE RULES:
-- ONLY describe physical objects, locations, equipment, nature, buildings — NO humans ever
-- Every prompt MUST be directly and specifically about {konu}
-- Include specific items related to {konu}: equipment, buildings, documents, landscapes, technology, artifacts
-- Style: dark, dramatic, cinematic, mysterious atmosphere
-- Each prompt: 8-12 words, very specific, starts with an object or place
-- FORBIDDEN words: man, woman, person, people, human, face, figure, portrait, character, body, hand
-- Every prompt ends with: "empty, no people, cinematic 8k"
+STRICT RULES:
+- Generate exactly {resim_sayisi} unique prompts
+- ONLY physical objects, locations, equipment, nature, buildings — ZERO humans ever
+- Each prompt directly and specifically about {konu}
+- Include specific items: equipment, buildings, documents, landscapes, technology, artifacts
+- Style: dark, dramatic, cinematic, mysterious
+- Each prompt 8-15 words, very specific, unique
+- NEVER use: man, woman, person, people, human, face, figure, portrait, hands, body
+- End each with: "empty, no people, cinematic 8k"
+- Make each prompt completely different from others
 - Numbered 1 to {resim_sayisi}
 
-Example for "nuclear weapons":
-1. nuclear reactor cooling towers at dusk, dramatic sky, empty, no people, cinematic 8k
-2. uranium enrichment centrifuges in dark facility, blue glow, empty, no people, cinematic 8k
-3. atomic bomb blueprint documents on table, dramatic lighting, empty, no people, cinematic 8k
+Generate {resim_sayisi} unique prompts about {konu}:"""
 
-Now generate {resim_sayisi} prompts specifically about {konu}:"""
-
-        raw, _ = gemini(p_img, max_tokens=2048)
+        raw, _ = gemini(p_img, max_tokens=4096)
         for line in raw.split('\n'):
             line = re.sub(r'^\d+[\.\)]\s*','',line.strip())
             line = re.sub(r'^[-*]\s*','',line)
             if len(line) > 15:
-                line = temizle(line)
+                line = temizle_prompt(line)
                 if "no people" not in line.lower():
                     line += ", empty, no people, cinematic 8k"
                 gorseller.append(line)
@@ -175,16 +172,16 @@ Now generate {resim_sayisi} prompts specifically about {konu}:"""
         tg(f"Gorsel prompt hatasi: {e}","⚠")
 
     # Yeterli yoksa konuya spesifik fallback
-    fallback_base = [
-        f"{konu} facility exterior at night, dramatic lighting, empty, no people, cinematic 8k",
-        f"{konu} related equipment closeup, dark background, dramatic, empty, no people, cinematic",
-        f"abandoned {konu} site, eerie atmosphere, empty, no people, cinematic 8k",
-        f"{konu} documents and blueprints on desk, spotlight, empty room, no people",
-        f"dramatic sky over {konu} landscape, wide shot, empty, no people, cinematic 8k",
-    ]
     while len(gorseller) < resim_sayisi:
         i = len(gorseller)
-        gorseller.append(fallback_base[i % len(fallback_base)])
+        varyasyonlar = [
+            f"{konu} facility exterior at night, dramatic sky, empty, no people, cinematic 8k",
+            f"abandoned {konu} site, eerie fog, empty, no people, cinematic 8k",
+            f"{konu} equipment closeup, dark dramatic lighting, empty, no people, cinematic",
+            f"{konu} location aerial view, dramatic clouds, empty, no people, cinematic 8k",
+            f"old {konu} documents on desk, spotlight, empty dark room, no people, cinematic",
+        ]
+        gorseller.append(varyasyonlar[i % len(varyasyonlar)])
 
     meta = {
         "baslik": f"{konu}: Tarihin Gizli Sirri!",
@@ -192,7 +189,7 @@ Now generate {resim_sayisi} prompts specifically about {konu}:"""
         "etiketler": [konu,"belgesel","tarih","youtube","turkce","egitim","gizem","kesfet"],
         "gorseller": gorseller[:resim_sayisi],
         "thumbnail_metin": konu.upper()[:15],
-        "thumbnail_prompt": f"{konu} epic dramatic historical cinematic no text no people",
+        "thumbnail_prompt": f"{konu} epic dramatic cinematic no text no people empty",
         "renk": "#1a1a2e"
     }
 
@@ -270,8 +267,8 @@ def muzik_uret(konu, sure_sn, muzik_hint=""):
         for c,r in [("ş","s"),("ğ","g"),("ı","i"),("ö","o"),("ü","u"),("ç","c")]: k=k.replace(c,r)
         cat = None
         if any(x in k for x in ["savas","viking","osmanli","roma","tarih","cin","mogol","napoleon","hitler"]): cat="war"
-        elif any(x in k for x in ["misir","antik","yunan","sumer","babil","gemi","kayip","gizemli","gizem","korku","paranormal"]): cat="mystery"
-        elif any(x in k for x in ["uzay","yapay","teknoloji","bilim","robot","gelecek"]): cat="space"
+        elif any(x in k for x in ["misir","antik","yunan","sumer","babil","gemi","kayip","gizemli","gizem","korku","paranormal","nukleer","uzay"]): cat="mystery"
+        elif any(x in k for x in ["teknoloji","bilim","robot","gelecek"]): cat="space"
         elif any(x in k for x in ["doga","hayvan","deniz","orman","okyanus"]): cat="nature"
         if cat:
             matches = [m for m in all_mp3 if cat in m.name.lower()]
@@ -291,61 +288,48 @@ def muzik_uret(konu, sure_sn, muzik_hint=""):
 def gorsel_indir(i, prompt, toplam, konu=""):
     yol = WORK/f"img_{i+1:02d}.jpg"
 
-    # Hugging Face SDXL — insan üretmiyor
-    if HF_TOKEN:
-        hf_prompt = f"{prompt}, empty scene, no humans, cinematic 8k"
-        hf_negative = "human, person, face, body, man, woman, people, crowd, figure, portrait, closeup face, character, silhouette, hands, skin"
-        try:
-            r = requests.post(
-                "https://api-inference.huggingface.co/models/stabilityai/stable-diffusion-xl-base-1.0",
-                headers={"Authorization": f"Bearer {HF_TOKEN}"},
-                json={
-                    "inputs": hf_prompt,
-                    "parameters": {
-                        "negative_prompt": hf_negative,
-                        "width": 1920,
-                        "height": 1080,
-                        "num_inference_steps": 30,
-                        "guidance_scale": 7.5
-                    }
-                },
-                timeout=120
-            )
-            if r.status_code == 200 and len(r.content) > 10000:
-                yol.write_bytes(r.content)
-                tg(f"Gorsel {i+1}/{toplam} ✓ (HF)","🖼")
-                time.sleep(2)
-                return str(yol)
-            elif r.status_code == 503:
-                tg(f"HF model yuklenıyor, bekleniyor...","⏳")
-                time.sleep(30)
-            else:
-                tg(f"HF hata {r.status_code}, Pollinations'a geciliyor...","⚠")
-        except Exception as e:
-            tg(f"HF hatasi: {str(e)[:40]}","⚠")
+    # Her görsel için tamamen rastgele seed — tekrar yok
+    seed = random.randint(10000, 9999999)
+    enc = quote(prompt[:200])
+    url = f"https://image.pollinations.ai/prompt/{enc}?width=1920&height=1080&seed={seed}&nologo=true&model=flux-realism"
 
-    # Pollinations fallback
-    for attempt, seed in enumerate([i*7+42, i*13+17, i*3+99, i*19+5]):
-        enc = quote(prompt[:200])
-        url = f"https://image.pollinations.ai/prompt/{enc}?width=1920&height=1080&seed={seed}&nologo=true&model=flux-realism&enhance=false"
+    for deneme in range(4):
         try:
             r = requests.get(url, timeout=120)
             if r.status_code==200 and len(r.content)>10000 and r.content[:2]==b'\xff\xd8':
                 yol.write_bytes(r.content)
                 tg(f"Gorsel {i+1}/{toplam} ✓","🖼")
-                time.sleep(4)
+                time.sleep(3)
                 return str(yol)
-            if r.status_code==429: time.sleep(45)
-            else: time.sleep(10)
-        except: time.sleep(10)
-        if attempt == 1:
-            prompt = f"{konu} empty dramatic landscape, no people, cinematic, dark atmosphere, 8k"
+            if r.status_code==429:
+                time.sleep(45)
+            else:
+                time.sleep(8)
+                # Farklı seed ile tekrar dene
+                seed = random.randint(10000, 9999999)
+                enc = quote(prompt[:200])
+                url = f"https://image.pollinations.ai/prompt/{enc}?width=1920&height=1080&seed={seed}&nologo=true&model=flux-realism"
+        except:
+            time.sleep(8)
+
+    # Fallback: alternatif prompt dene
+    alt_prompt = f"{konu} dramatic empty location, cinematic dark atmosphere, no people, 8k"
+    seed2 = random.randint(10000, 9999999)
+    enc2 = quote(alt_prompt[:200])
+    url2 = f"https://image.pollinations.ai/prompt/{enc2}?width=1920&height=1080&seed={seed2}&nologo=true&model=flux-realism"
+    try:
+        r = requests.get(url2, timeout=120)
+        if r.status_code==200 and len(r.content)>10000 and r.content[:2]==b'\xff\xd8':
+            yol.write_bytes(r.content)
+            tg(f"Gorsel {i+1}/{toplam} ✓ (alt)","🖼")
+            return str(yol)
+    except: pass
 
     renkler=["0x3D1C02","0x4A0E0E","0x0A1628","0x2D1B69","0x003333","0x1A3A1A"]
     subprocess.run(["ffmpeg","-y","-f","lavfi","-i",
         f"color=c={renkler[i%len(renkler)]}:size=1920x1080:rate=1",
         "-vframes","1","-q:v","2",str(yol)],capture_output=True)
-    tg(f"Gorsel {i+1} yedek","⚠")
+    tg(f"Gorsel {i+1} yedek renk","⚠")
     return str(yol)
 
 def gorseller_uret(promptlar, konu=""):
@@ -356,8 +340,9 @@ def gorseller_uret(promptlar, konu=""):
 # ─── THUMBNAIL ───────────────────────────────────────────────────────────────
 def thumbnail_uret(prompt, metin, renk, konu):
     tg("Thumbnail uretiliyor...","🖼")
-    enc=quote(f"{prompt}, youtube thumbnail dramatic vibrant no text no people")
-    url=f"https://image.pollinations.ai/prompt/{enc}?width=1280&height=720&seed=777&nologo=true&model=flux"
+    seed = random.randint(10000, 9999999)
+    enc=quote(f"{prompt}, youtube thumbnail dramatic vibrant no text no people empty")
+    url=f"https://image.pollinations.ai/prompt/{enc}?width=1280&height=720&seed={seed}&nologo=true&model=flux-realism"
     base=WORK/"thumb_base.jpg"; final=WORK/"thumbnail.jpg"
     for _ in range(3):
         try:
@@ -467,12 +452,10 @@ def video_uret(gorseller, ses, altyazi_srt, toplam_sure):
     klipler = []
     for idx, gorsel in enumerate(gorseller):
         klip = WORK/f"clip_{idx:02d}.mp4"
-
-        # Fade in/out ile scale
         vf = (f"scale=1920:1080:force_original_aspect_ratio=decrease,"
               f"pad=1920:1080:(ow-iw)/2:(oh-ih)/2,"
-              f"fade=t=in:st=0:d=0.5,"
-              f"fade=t=out:st={gorsel_sure-0.5:.2f}:d=0.5,"
+              f"fade=t=in:st=0:d={fade_sure},"
+              f"fade=t=out:st={gorsel_sure-fade_sure:.2f}:d={fade_sure},"
               f"format=yuv420p")
 
         r = subprocess.run(
@@ -486,7 +469,7 @@ def video_uret(gorseller, ses, altyazi_srt, toplam_sure):
             klipler.append(str(klip))
             tg(f"Klip {idx+1}/{len(gorseller)} ✓","🎞")
         else:
-            tg(f"Klip {idx+1} hatasi: {r.stderr[-80:]}","⚠")
+            tg(f"Klip {idx+1} hatasi","⚠")
 
     if not klipler: raise Exception("Hic klip olusturulamadi")
 
@@ -518,45 +501,35 @@ def video_uret(gorseller, ses, altyazi_srt, toplam_sure):
     if r.returncode!=0 or not final_video.exists():
         raise Exception(f"Final video hatasi: {r.stderr[-100:]}")
 
-    # Intro dosyasını bul
+    # Intro ekle
     repo_root = Path(os.environ.get("GITHUB_WORKSPACE","."))
     intro_dosya = None
     for f in repo_root.glob("*.mp4"):
         if "intro" in f.name.lower() or "abone" in f.name.lower():
-            intro_dosya = str(f)
-            break
+            intro_dosya = str(f); break
 
     if intro_dosya and os.path.exists(intro_dosya):
-        tg(f"Intro bulundu: {Path(intro_dosya).name}","🎬")
-        # Intro'yu normalize et
+        tg(f"Intro ekleniyor...","🎬")
         intro_norm = WORK/"intro_norm.mp4"
         subprocess.run(["ffmpeg","-y","-i",intro_dosya,
             "-c:v","libx264","-preset","fast","-crf","23","-r","25",
             "-vf","scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2,format=yuv420p",
             "-c:a","aac","-b:a","192k",str(intro_norm)],
             capture_output=True,text=True,timeout=120)
-
         if intro_norm.exists():
             with_intro = WORK/"final_with_intro.mp4"
             intro_concat = WORK/"intro_concat.txt"
-            # Başa intro + ana video + sona intro (tamamen ayrı, üste binmiyor)
             intro_concat.write_text(
                 f"file '{intro_norm.resolve()}'\n"
                 f"file '{final_video.resolve()}'\n"
                 f"file '{intro_norm.resolve()}'\n"
             )
-            r2 = subprocess.run(
-                ["ffmpeg","-y","-f","concat","-safe","0",
-                 "-i",str(intro_concat.resolve()),
-                 "-c","copy",str(with_intro)],
+            r2 = subprocess.run(["ffmpeg","-y","-f","concat","-safe","0",
+                "-i",str(intro_concat.resolve()),"-c","copy",str(with_intro)],
                 capture_output=True,text=True,timeout=600)
             if r2.returncode==0 and with_intro.exists():
                 tg(f"Intro eklendi! {with_intro.stat().st_size//(1024*1024)}MB","✅")
                 return str(with_intro)
-            else:
-                tg(f"Intro eklenemedi: {r2.stderr[-60:]}","⚠")
-    else:
-        tg("Intro bulunamadi","⚠")
 
     tg(f"Video hazir! {final_video.stat().st_size//(1024*1024)}MB","✅")
     return str(final_video)
