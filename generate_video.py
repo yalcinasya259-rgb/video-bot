@@ -288,42 +288,26 @@ def muzik_uret(konu, sure_sn, muzik_hint=""):
 def gorsel_indir(i, prompt, toplam, konu=""):
     yol = WORK/f"img_{i+1:02d}.jpg"
 
-    # Her görsel için tamamen rastgele seed — tekrar yok
-    seed = random.randint(10000, 9999999)
-    enc = quote(prompt[:200])
-    url = f"https://image.pollinations.ai/prompt/{enc}?width=1920&height=1080&seed={seed}&nologo=true&model=flux-realism"
-
-    for deneme in range(4):
+    for deneme in range(5):
+        seed = random.randint(10000, 9999999)
+        enc = quote(prompt[:200])
+        # enhance=false — daha hızlı
+        url = f"https://image.pollinations.ai/prompt/{enc}?width=1280&height=720&seed={seed}&nologo=true&model=flux"
         try:
-            r = requests.get(url, timeout=120)
-            if r.status_code==200 and len(r.content)>10000 and r.content[:2]==b'\xff\xd8':
+            r = requests.get(url, timeout=180)
+            if r.status_code==200 and len(r.content)>5000 and r.content[:2]==b'\xff\xd8':
                 yol.write_bytes(r.content)
                 tg(f"Gorsel {i+1}/{toplam} ✓","🖼")
                 time.sleep(3)
                 return str(yol)
-            if r.status_code==429:
-                time.sleep(45)
+            elif r.status_code==429:
+                tg(f"Gorsel {i+1} rate limit, 60sn bekleniyor...","⏳")
+                time.sleep(60)
             else:
-                time.sleep(8)
-                # Farklı seed ile tekrar dene
-                seed = random.randint(10000, 9999999)
-                enc = quote(prompt[:200])
-                url = f"https://image.pollinations.ai/prompt/{enc}?width=1920&height=1080&seed={seed}&nologo=true&model=flux-realism"
-        except:
-            time.sleep(8)
-
-    # Fallback: alternatif prompt dene
-    alt_prompt = f"{konu} dramatic empty location, cinematic dark atmosphere, no people, 8k"
-    seed2 = random.randint(10000, 9999999)
-    enc2 = quote(alt_prompt[:200])
-    url2 = f"https://image.pollinations.ai/prompt/{enc2}?width=1920&height=1080&seed={seed2}&nologo=true&model=flux-realism"
-    try:
-        r = requests.get(url2, timeout=120)
-        if r.status_code==200 and len(r.content)>10000 and r.content[:2]==b'\xff\xd8':
-            yol.write_bytes(r.content)
-            tg(f"Gorsel {i+1}/{toplam} ✓ (alt)","🖼")
-            return str(yol)
-    except: pass
+                time.sleep(10)
+        except Exception as e:
+            tg(f"Gorsel {i+1} timeout ({deneme+1}/5)","⚠")
+            time.sleep(15)
 
     renkler=["0x3D1C02","0x4A0E0E","0x0A1628","0x2D1B69","0x003333","0x1A3A1A"]
     subprocess.run(["ffmpeg","-y","-f","lavfi","-i",
