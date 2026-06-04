@@ -289,25 +289,22 @@ def gorsel_indir(i, prompt, toplam, konu=""):
     yol = WORK/f"img_{i+1:02d}.jpg"
 
     for deneme in range(5):
-        seed = random.randint(10000, 9999999)
+        seed = i * 7 + deneme * 13 + 42
         enc = quote(prompt[:200])
-        # enhance=false — daha hızlı
-        url = f"https://image.pollinations.ai/prompt/{enc}?width=1280&height=720&seed={seed}&nologo=true&model=flux"
+        url = f"https://image.pollinations.ai/prompt/{enc}?width=1920&height=1080&seed={seed}&nologo=true&model=flux&enhance=true"
         try:
-            r = requests.get(url, timeout=180)
-            if r.status_code==200 and len(r.content)>5000 and r.content[:2]==b'\xff\xd8':
+            r = requests.get(url, timeout=90)
+            if r.status_code==200 and len(r.content)>10000 and r.content[:2]==b'\xff\xd8':
                 yol.write_bytes(r.content)
                 tg(f"Gorsel {i+1}/{toplam} ✓","🖼")
-                time.sleep(3)
+                time.sleep(6)
                 return str(yol)
             elif r.status_code==429:
-                tg(f"Gorsel {i+1} rate limit, 60sn bekleniyor...","⏳")
-                time.sleep(60)
+                time.sleep(30)
             else:
-                time.sleep(10)
-        except Exception as e:
-            tg(f"Gorsel {i+1} timeout ({deneme+1}/5)","⚠")
-            time.sleep(15)
+                time.sleep(8)
+        except:
+            time.sleep(10)
 
     renkler=["0x3D1C02","0x4A0E0E","0x0A1628","0x2D1B69","0x003333","0x1A3A1A"]
     subprocess.run(["ffmpeg","-y","-f","lavfi","-i",
